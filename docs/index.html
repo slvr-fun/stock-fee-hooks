@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Memecoin Bots Behind NVDA's Volume</title>
+<meta name="description" content="We traced 724,235 swaps to find out who was paying LPs in Robinhood Chain's NVDA pools. Most of the profit came from memecoin bots, and that flow is down 97%.">
+<meta name="theme-color" content="#0d0d0d">
+<meta property="og:type" content="article"><meta property="og:title" content="The Memecoin Bots Behind NVDA's Volume">
+<meta property="og:description" content="We traced 724,235 swaps to find out who was paying LPs in Robinhood Chain's NVDA pools. Most of the profit came from memecoin bots, and that flow is down 97%."><meta property="og:url" content="https://slvr-fun.github.io/stock-fee-hooks/">
+<meta property="og:image" content="https://slvr-fun.github.io/stock-fee-hooks/images/og.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="The Memecoin Bots Behind NVDA's Volume">
+<meta name="twitter:description" content="We traced 724,235 swaps to find out who was paying LPs in Robinhood Chain's NVDA pools. Most of the profit came from memecoin bots, and that flow is down 97%."><meta name="twitter:image" content="https://slvr-fun.github.io/stock-fee-hooks/images/og.png">
+<link rel="icon" href="assets/slvr-s.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Space+Grotesk:wght@500;600&display=swap">
+<style>/* SLVR research article. Layout: a 68ch reading column; figures break out to 1040px.
+   Tokens follow slvr.fun (interface/app/globals.css): the #0d0d0d / #111112 / #1a1a1b / #202022 elevation ladder,
+   slate text, silver/chrome accents, rings drawn as inset shadows, Geist + Space Grotesk. Dark only, like the site. */
+:root {
+  color-scheme: dark;
+  --bg: #0d0d0d; --surface: #111112; --raised: #1a1a1b; --panel: #202022; --hover: #26262b;
+  --text: rgb(241, 245, 249); --text-2: rgb(203, 213, 225); --muted: rgb(148, 163, 184); --faint: rgb(100, 116, 139);
+  --silver: rgb(210, 217, 224); --silver-light: rgb(240, 243, 246); --metal: #b2b9bc; --chrome: #c1c7c9;
+  --ring: rgba(255, 255, 255, 0.08); --ring-2: rgba(255, 255, 255, 0.16); --ring-chrome: rgba(255, 255, 255, 0.55);
+  --danger: #fd3748;
+  --s-silver: #c0c4cc; --s-orange: #d95926; --s-blue: #3987e5; --s-green: #199e70;
+  --grid: rgba(255, 255, 255, 0.06); --axis: rgba(255, 255, 255, 0.18); --tick: rgba(255, 255, 255, 0.45);
+  --f-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-display: "Space Grotesk", "Geist", ui-sans-serif, system-ui, sans-serif;
+  --f-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body { margin: 0; background: var(--bg); color: var(--text-2); font-family: var(--f-sans); font-size: 17px; line-height: 1.65;
+  -webkit-font-smoothing: antialiased; font-feature-settings: "lnum" 1; }
+a { color: var(--text); text-decoration: underline; text-decoration-color: rgba(255,255,255,0.3); text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--silver); }
+:focus-visible { outline: 2px solid var(--silver); outline-offset: 2px; border-radius: 6px; }
+strong { color: var(--text); font-weight: 600; }
+code { font-family: var(--f-mono); font-size: 0.86em; background: var(--raised); padding: 1px 6px; border-radius: 6px; }
+
+/* ---------- header */
+.topbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  background: rgba(13,13,13,0.72); box-shadow: inset 0 -1px 0 var(--ring); }
+.topbar .in { max-width: 1104px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.topbar img { height: 30px; width: auto; display: block; }
+.topbar .right { display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--muted); }
+.pill { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 16px; border-radius: 12px; font-size: 14px; font-weight: 600;
+  text-decoration: none; color: var(--text); background: var(--surface);
+  box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.85), 0 4px 6px rgba(0,0,0,0.3); transition: background .2s var(--ease); }
+.pill:hover { background: var(--hover); }
+.pill svg { width: 16px; height: 16px; fill: currentColor; }
+@media (max-width: 560px) { .topbar .right .tag { display: none; } }
+
+/* ---------- hero */
+.hero { position: relative; overflow: hidden; }
+.hero::before { content: ""; position: absolute; inset: 0; background: url("assets/metal-liquid.webp") center/cover no-repeat; opacity: 0.16; filter: grayscale(0.2); }
+.hero::after { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 0%, rgba(13,13,13,0.2) 0%, rgba(13,13,13,0.85) 60%, var(--bg) 100%); }
+.hero .in { position: relative; z-index: 1; max-width: 1104px; margin: 0 auto; padding: 72px 20px 40px; }
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.eyebrow b { color: var(--silver); font-weight: 500; }
+h1 { font-family: var(--f-display); font-weight: 600; font-size: clamp(40px, 7.2vw, 80px); line-height: 0.98; letter-spacing: -0.035em;
+  margin: 18px 0 22px; color: var(--text); text-wrap: balance; max-width: 15ch; }
+.metal-text { background: linear-gradient(100deg, #f1f5f9 0%, #c1c7c9 30%, #ffffff 48%, #8f979b 66%, #e6eaee 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+.dek { font-size: clamp(18px, 2.1vw, 21px); line-height: 1.5; color: var(--text-2); max-width: 58ch; margin: 0; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 40px; }
+.stat { background: rgba(17,17,18,0.82); border-radius: 18px; padding: 16px 16px 14px; text-align: center; box-shadow: inset 0 0 0 1px var(--ring-2); }
+.stat .l { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
+.stat .v { font-family: var(--f-sans); font-weight: 600; font-size: 30px; color: var(--text); letter-spacing: -0.02em; margin: 6px 0 2px; }
+.stat .s { font-size: 12px; color: var(--faint); }
+@media (max-width: 860px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ---------- body */
+main { padding: 8px 20px 96px; }
+.col { max-width: 68ch; margin: 0 auto; }
+.wide { max-width: 1040px; margin: 0 auto; }
+h2 { font-family: var(--f-display); font-weight: 600; font-size: clamp(26px, 3.4vw, 34px); line-height: 1.15; letter-spacing: -0.02em;
+  color: var(--text); margin: 72px 0 14px; text-wrap: balance; }
+h3 { font-family: var(--f-display); font-weight: 600; color: var(--text); letter-spacing: -0.01em; text-wrap: balance; }
+p { margin: 0 0 18px; }
+.col ul { padding-left: 1.2em; } .col li { margin-bottom: 8px; }
+.muted { color: var(--muted); }
+.so { display: none; } /* shown only in the static images for X */
+
+/* ---------- figure cards */
+.card { max-width: 1040px; margin: 36px auto; background: var(--surface); border-radius: 22px; padding: 22px 22px 16px; box-shadow: inset 0 0 0 1px var(--ring); min-width: 0; }
+.card.chrome { box-shadow: inset 0 0 0 1px var(--ring-chrome), 0 10px 30px rgba(0,0,0,0.35); }
+.card header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px 20px; }
+.card .titles { flex: 1 1 420px; min-width: 0; }
+.fignum { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
+.card h3 { margin: 6px 0 4px; font-size: 19px; }
+.card .sub { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 0; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--raised); border-radius: 12px; box-shadow: inset 0 0 0 1px var(--ring); }
+.seg button { font: 500 13px var(--f-sans); color: var(--muted); background: transparent; border: 0; border-radius: 9px; padding: 6px 11px; cursor: pointer;
+  transition: background .2s var(--ease), color .2s var(--ease); white-space: nowrap; }
+.seg button:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+.seg button[aria-pressed="true"] { background: rgb(226, 232, 240); color: #0d0d0d; }
+.seg-label { font-size: 12px; color: var(--faint); margin-right: 2px; }
+.plot { position: relative; margin-top: 14px; min-height: 120px; }
+.plot svg { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--f-mono); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.legend button { display: inline-flex; align-items: center; gap: 8px; font: 13px var(--f-sans); color: var(--text-2); background: transparent; border: 0;
+  padding: 4px 8px; border-radius: 8px; cursor: pointer; transition: opacity .2s; }
+.legend button:hover { background: rgba(255,255,255,0.05); }
+.legend button[aria-pressed="false"] { opacity: 0.4; }
+.legend .sw { width: 12px; height: 12px; border-radius: 3px; }
+.legend .sw.line { height: 3px; width: 16px; border-radius: 2px; }
+.legend .sw.dash { height: 0; width: 16px; border-top: 3px dashed; background: transparent !important; border-radius: 0; }
+.hint { font-size: 12px; color: var(--faint); margin-top: 6px; }
+details.data { margin-top: 10px; padding-top: 8px; box-shadow: inset 0 1px 0 var(--ring); }
+details.data summary { cursor: pointer; font-size: 13px; color: var(--faint); }
+.tscroll { overflow-x: auto; max-height: 340px; overflow-y: auto; margin-top: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 10px; box-shadow: inset 0 -1px 0 var(--ring); white-space: nowrap; }
+th { color: var(--faint); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; position: sticky; top: 0; background: var(--surface); }
+.duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; max-width: 1040px; margin: 0 auto; }
+.duo .card { margin: 18px 0; }
+@media (max-width: 860px) { .duo { grid-template-columns: 1fr; } }
+
+/* chart marks */
+.g-grid { stroke: var(--grid); }
+.g-axis { stroke: var(--axis); }
+.g-tick { fill: var(--tick); font-size: 11px; }
+.g-val { fill: var(--text); font-size: 12px; font-weight: 500; }
+.g-lab { fill: var(--text-2); font-size: 12.5px; font-family: var(--f-sans); }
+.g-cross { stroke: rgba(255,255,255,0.35); stroke-width: 1; }
+.g-hit { fill: transparent; }
+.bar { transition: opacity .15s; }
+.bars-dim .bar { opacity: 0.45; } .bars-dim .bar.on { opacity: 1; }
+
+/* readout tiles (APR calculator) */
+.readout { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.readout .t { background: var(--raised); border-radius: 14px; padding: 10px 12px; text-align: center; box-shadow: inset 0 0 0 1px var(--ring); }
+.readout .t .l { font-size: 12px; color: var(--muted); display: flex; align-items: center; justify-content: center; gap: 6px; }
+.readout .t .l i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.readout .t .v { font-size: 22px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+@media (max-width: 700px) { .readout { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.slider { display: flex; align-items: center; gap: 12px; margin-top: 14px; font-size: 13px; color: var(--muted); }
+.slider input { flex: 1; accent-color: #e2e8f0; }
+.slider output { min-width: 60px; text-align: right; color: var(--text); font-family: var(--f-mono); }
+
+/* route diagram */
+.route { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 18px 0 6px; }
+.hop { position: relative; background: var(--raised); border-radius: 14px; padding: 10px 14px; font-size: 14px; color: var(--text); line-height: 1.3;
+  box-shadow: inset 0 0 0 1px var(--ring); cursor: default; transition: box-shadow .25s var(--ease), background .25s var(--ease); }
+.hop small { display: block; color: var(--muted); font-family: var(--f-mono); font-size: 11px; margin-top: 2px; }
+.hop.us { box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.9), 0 0 18px rgba(255,255,255,0.08); }
+.hop.lit { background: var(--hover); box-shadow: inset 0 0 0 1.5px var(--silver); }
+.arr { color: var(--faint); font-family: var(--f-mono); }
+.route-note { min-height: 1.6em; font-size: 14px; color: var(--text-2); margin-top: 8px; }
+
+/* design cards */
+.designs { display: grid; gap: 14px; max-width: 1040px; margin: 30px auto; }
+.design { background: var(--surface); border-radius: 22px; box-shadow: inset 0 0 0 1px var(--ring); overflow: hidden; }
+.design .head { padding: 18px 22px; background: linear-gradient(180deg, var(--raised), var(--surface)); box-shadow: inset 0 -1px 0 var(--ring); }
+.design .tag { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
+.design h3 { margin: 6px 0 2px; font-size: 22px; }
+.design .head p { margin: 0; color: var(--muted); }
+.design dl { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 10px 18px; margin: 0; padding: 18px 22px; font-size: 15.5px; }
+.design dt { color: var(--faint); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; padding-top: 3px; }
+.design dd { margin: 0; color: var(--text-2); }
+@media (max-width: 600px) { .design dl { grid-template-columns: 1fr; gap: 2px; } .design dd { margin-bottom: 10px; } }
+
+/* tooltip */
+.tip { position: fixed; z-index: 50; pointer-events: none; background: rgba(32,32,34,0.96); color: var(--text); border-radius: 12px; padding: 9px 11px;
+  font-size: 12.5px; min-width: 150px; max-width: 280px; box-shadow: inset 0 0 0 1px var(--ring-2), 0 10px 30px rgba(0,0,0,0.45); backdrop-filter: blur(6px); }
+.tip .tt { color: var(--muted); font-size: 11.5px; margin-bottom: 5px; font-family: var(--f-mono); }
+.tip .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tip .row .n { display: flex; align-items: center; gap: 7px; color: var(--text-2); }
+.tip .row .n i { width: 12px; height: 3px; border-radius: 2px; display: inline-block; }
+.tip .row b { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.method { font-size: 14px; color: var(--faint); margin-top: 48px; }
+footer { max-width: 1104px; margin: 0 auto; padding: 28px 20px 48px; color: var(--faint); font-size: 13px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between;
+  box-shadow: inset 0 1px 0 var(--ring); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+.vault-actual { margin-top: 18px; padding-top: 14px; box-shadow: inset 0 1px 0 var(--ring); }
+.va-title { font-size: 13px; color: var(--text-2); font-weight: 500; }
+.vault-actual .readout, #fig11 .readout { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.vault-actual .readout { margin-top: 10px; }
+.vault-actual .hint { display: block !important; }
+</style>
+</head>
+<body>
+<div class="topbar"><div class="in"><a href="https://slvr.fun" aria-label="SLVR"><img src="assets/slvr-logo.webp" alt="SLVR" width="74" height="30"></a>
+<div class="right"><span class="tag">Vaults research</span><a class="pill" href="https://github.com/slvr-fun/stock-fee-hooks"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Code</a></div></div></div>
+<section class="hero"><div class="in">
+<div class="eyebrow"><b>SLVR Vaults</b> · Robinhood Chain · October 9, 2026</div>
+<h1>The memecoin bots behind <span class="metal-text">NVDA's volume</span></h1>
+<p class="dek">We traced 724,235 swaps to find out who was paying LPs in Robinhood Chain's NVDA pools. Most of the profit came from memecoin bots. That flow is down 97%, and here's the pool we're building next.</p>
+<div class="stats">
+<div class="stat"><div class="l">Memecoin-routed volume, peak week to now</div><div class="v">−97%</div><div class="s">$567k → $15k an hour</div></div>
+<div class="stat"><div class="l">What memecoin flow paid LPs per dollar</div><div class="v">+3.85 bps</div><div class="s">Arbitrage cost them 4.02</div></div>
+<div class="stat"><div class="l">Share of LP profit from memecoin bots</div><div class="v">~¾</div><div class="s">+1.1 → +0.3 bps without them</div></div>
+<div class="stat"><div class="l">LP profit per dollar traded, our hook vs a static fee</div><div class="v">5x</div><div class="s">+1.42 vs +0.27 bps on the same flow</div></div>
+</div></div></section>
+<main>
+<div class="col">
+<p>For six weeks the NVDA/USDG pools on Robinhood Chain looked like great places to provide liquidity. Then our vault's fee income started falling, and I wanted to know why before we built anything else.</p>
+<p>The team and I traced 724,235 swaps back to the contracts and wallets behind them to find out who had been paying our LPs. Most of the profitable volume came from memecoin bots using NVDA as a routing hop, and that flow is down 97% from its peak.</p>
+
+<h2>Where the volume came from</h2>
+<p>Our NVDA vault provides hedged liquidity to the NVDA/USDG 0.05% Uniswap v3 pool, where LPs keep 3.75 bps of every trade after the protocol fee.</p>
+<p>Daily volume in the pool rose from about $2M in early August to $62.0M on September 3 and held between $15M and $25M through most of September. From October 3 to 8 it traded $2.5M to $6.2M a day.</p>
+</div>
+<figure class="card" id="fig1"><header><div class="titles"><span class="fignum">Figure 1</span><h3>NVDA/USDG daily volume by pool</h3><p class="sub">Millions of USD per day, July 21 to October 9 (October 9 is a partial day).<span class="ia"> Hover for every pool on a day; click a legend entry to hide it.</span> Source: GeckoTerminal.</p></div><div class="ctl controls"></div></header><div class="plot"></div><div class="under"></div></figure>
+<div class="col">
+<p>Some of that volume moved to cheaper pools. A Uniswap v4 NVDA/USDG pool at 0.01% and a Ramses v3 pool started winning flow in the last week of September, and on October 7 they traded $59.3M and $23.1M against $5.7M in ours. A day later the 0.01% pool was back to $7.0M. Aggregators send price-sensitive flow to the cheapest pool available, so this part we expected. Those spikes were brief. Both pools jumped for a few days in early October, with the 0.01% pool trading $29.0M on October 4 and $59.3M on October 7, and both were back down by October 8, at $7.0M and $2.5M. We didn't move our liquidity to follow them, because we wanted to see volume hold up for weeks, not days, before chasing it.</p>
+<p>The rest surprised me. I assumed most of that volume was people trading NVDA, and a large share of it came from memecoin bots. Memecoins launched on one of the chain's launchpads are priced in NVDA, so a lot of their buys and sells cross an NVDA pool on their way to ETH. The wallets we traced behaved like volume bots. One made 59 round trips across 28 memecoins in five and a half hours, selling each position a median 6.8 seconds after buying it.</p>
+</div>
+<figure class="card" id="fig2"><header><div class="titles"><span class="fignum">Figure 2</span><h3>The route of one memecoin sale</h3>
+<p class="sub">Many launchpad token trades took this path, in one direction or the other. <span class="ia">Hover a step, or watch it play through.</span></p></div></header>
+<div class="route" aria-label="Transaction route">
+<div class="hop" data-note="A bot wallet sells a memecoin launched on one of the chain's launchpads.">Memecoin<small>sold by a bot wallet</small></div><span class="arr">→</span>
+<div class="hop" data-note="The launchpad's bonding curve pays out NVDA, not ETH.">Launchpad bonding curve<small>pays out NVDA</small></div><span class="arr">→</span>
+<div class="hop us" data-note="The NVDA is sold into our pool for USDG. Our LPs collect the 3.75 bps fee on the way through.">NVDA/USDG 0.05%<small>our vault pool</small></div><span class="arr">→</span>
+<div class="hop" data-note="The USDG is swapped to WETH in a second pool.">USDG/WETH<small>v3 pool</small></div><span class="arr">→</span>
+<div class="hop" data-note="The wallet ends with ETH. A buy runs the same path in reverse.">ETH<small>back to the wallet</small></div>
+</div><p class="route-note" aria-live="polite"></p></figure>
+<figure class="card chrome" id="fig3"><header><div class="titles"><span class="fignum">Figure 3</span><h3>Who traded in the NVDA vault pool</h3><p class="sub">Average USD volume per hour by week. Weekly totals from GeckoTerminal, split by flow class from sampled swaps weighted to a normal day's mix of trading hours.<span class="ia"> Switch to Share to see the mix.</span></p></div><div class="ctl controls"></div></header><div class="plot"></div><div class="under"></div></figure>
+<div class="col">
+<p>In the weeks of August 31 and September 7, memecoin routing was the largest single class of flow in the pool at $490k to $567k an hour. By the week of October 5 it was $15k. Arbitrage fell from about $540k to $75k an hour, a smaller drop because arbitrage follows NVDA's price and NVDA kept moving.</p>
+<p>The SPY and META vault pools showed the same pattern, and the fall was steeper. Memecoin routing made up 87% to 91% of SPY volume from August 24 to September 14. It fell from $255k an hour in the week of August 31 to under $3k in SPY, and from $69k in the week of September 14 to under $1k in META, about 99% in each, against 97% in NVDA.</p>
+</div>
+<figure class="card" id="fig4"><header><div class="titles"><span class="fignum">Figure 4</span><h3>The same pattern in the SPY and META vault pools</h3><p class="sub">Uniswap v4 pools at 0.30%. Same method as Figure 3.</p></div><div class="ctl controls"></div></header><div class="plot"></div><div class="under"></div></figure>
+<div class="col">
+<p>These were managed operations. The largest router carried $353k an hour at its peak. When another router began fading in early September, an identical 100-byte contract went live at a new address on September 6 and was carrying $106k an hour the following week.</p>
+<p>The bots left when the launchpad emptied. Curve trading peaked at about 57,000 trades an hour in the week of September 7 and is down to about 6,300. New pools paired against NVDA peaked at 3,835 in the week of August 24 and fell below 1,000 by mid-September. The bots paid their own gas and had mostly left before the subsidy changed on September 29.</p>
+</div>
+<div class="duo"><figure class="card" id="fig5a"><header><div class="titles"><span class="fignum">Figure 5a</span><h3>Launchpad curve trades per hour</h3><p class="sub">Chain-wide bonding-curve trades, two 15-minute samples a day, averaged by week.</p></div><div class="ctl controls"></div></header><div class="plot"></div><div class="under"></div></figure><figure class="card" id="fig5b"><header><div class="titles"><span class="fignum">Figure 5b</span><h3>New pools paired against NVDA</h3><p class="sub">Uniswap v3 and v4 pool creations per week. The last week runs to October 9.</p></div><div class="ctl controls"></div></header><div class="plot"></div><div class="under"></div></figure></div>
+
+<div class="col">
+<h2>What each trader was worth</h2>
+<p>We marked swaps against the Lighter NVDA perp five minutes later to see what each class of flow paid our LPs.</p>
+<p>Memecoin-routed flow was 24% of volume and left LPs +3.85 bps per dollar, almost the entire fee, because those bots had no view on where NVDA was going. Aggregator and other flow was 39% of volume and earned LPs +4.16 bps. Arbitrage bots were 37% of volume and cost LPs 4.02 bps per dollar after the fee they paid.</p>
+<p>Take the memecoin flow out and LP profit falls by about three quarters, from +1.1 to +0.3 bps per dollar. I don't think anyone providing liquidity on the chain knew how much of their return came from those bots, ourselves included.</p>
+</div>
+<figure class="card chrome" id="fig6"><header><div class="titles"><span class="fignum">Figure 6</span><h3>What each kind of trader was worth to an NVDA LP</h3><p class="sub">LP profit per dollar traded after the LP's 3.75 bps fee, marked against the Lighter NVDA perp five minutes later. August 21 to September 19, weighted to a normal day's mix of trading hours.</p></div><div class="ctl controls"></div></header><div class="plot"></div><div class="under"></div></figure>
+
+<div class="col">
+<h2>Passive stock-token LPing today</h2>
+<p>For a passive LP in the v3 pool, projected APR on a $10k position went from about +78% in the memecoin era (August 21 to September 19) to about −16% from October 1 to 8. Take the memecoin flow out of that same month and it was about +14%. The pool and the fee stayed the same. The change came from who was trading and from how much volume each dollar of liquidity saw, which fell from 39x a day to about 16x.</p>
+</div>
+<figure class="card" id="fig7"><header><div class="titles"><span class="fignum">Figure 7</span><h3>Projected APR: passive LP in the v3 pool against our active strategy</h3><p class="sub">A passive ±1% range that sits in the pool every minute, hedged, before hedging costs. The first two bars use August 21 to September 19 marked against the Lighter perp. October uses every swap from October 1 to 8, when two weekday sell-offs drove most of the loss. Our vault doesn't run this passive strategy. The two rows below the dashed line are our active strategy: the live vault's actual share-price return after all costs, annualized. Eight and sixteen days are short windows to annualize, so the period returns are shown below the chart as well.</p></div><div class="ctl controls"></div></header><div class="plot"></div><div class="under"></div></figure>
+<div class="col">
+<p>The cheaper pools didn't escape this, and one week of October data can't rank them. Results swing from day to day. Most of the 0.01% pool's October return came from two days of unusually high volume, October 4 and 7, and its LPs lost money on October 8. The v3 pool's October result rests on two weekday sell-offs, October 1 and 8. Set each pool's two outlier days aside and both land close to break-even: about +10% a year for the 0.01% pool and +6% for the v3 pool. Ramses lands between −10% and +30% depending on where its dynamic fee sits.</p>
+<p>These projections assume a passive ±1% range that never leaves range, before hedging costs. Active management can do better or worse. Our live NVDA vault doesn't sit in the pool every minute. It pulls its liquidity when expected fees don't cover what arbitrage takes, and it sits out the open. After all costs, including hedging and swaps, it was down 0.2% over October 1 to 8 and up 0.2% from its September 22 launch through October 8.</p>
+<p>Timing matters too. LPs lose 2.27 bps per dollar in the first half hour after Nasdaq opens and lost about 6 bps per dollar around NVDA's August 26 earnings. Overnight and weekend flow earned them +2.2 and +3.1 bps. A static-fee pool charges the same in every hour.</p>
+</div>
+<figure class="card" id="fig8"><header><div class="titles"><span class="fignum">Figure 8</span><h3>LP result by time of day</h3><p class="sub">Weekdays, New York time, August 21 to September 19 with the earnings window excluded. The open and close are shaded.<span class="ia"> Zoom in for five-minute buckets.</span></p></div><div class="ctl controls"></div></header><div class="plot"></div><div class="under"></div></figure>
+<div class="col">
+<p>I want to be clear that stock-token LPing still works on Robinhood Chain. With today's volume and static fees, the returns are small and depend on size and trader mix. The fix is a pool that prices trades by when they happen and what they know.</p>
+
+<h2>A pool built for stock tokens</h2>
+<p>A static fee charges every trade the same, and stock-token trades aren't the same. Uniswap v4 lets a pool attach a hook that sets the fee on each swap. We wrote four, each aimed at a loss we measured above.</p>
+</div>
+
+<div class="designs"><div class="design">
+  <div class="head"><span class="tag">Design 1 · no oracle</span><h3>Opening Bell fee</h3><p>Charge more in the two half hours that lose money.</p></div>
+  <div><dl>
+    <dt>Rule</dt><dd>The fee goes from 5 bps to 12 bps for the first half hour after Nasdaq opens and to 10 bps for the last half hour before the close, on NYSE trading days only. The hook works out New York time, daylight saving and exchange holidays on chain, so it needs no oracle and no owner.</dd>
+    <dt>Replay</dt><dd>Over August 21 to September 19, LP profit in the v3 pool rises from $49.1k to between $60.2k and $75.9k. The low end assumes every ordinary trader leaves those two windows.</dd>
+  </dl></div>
+</div>
+<div class="design">
+  <div class="head"><span class="tag">Design 2 · no oracle</span><h3>Opening auction</h3><p>Sell the opening jump to arbitrageurs instead of giving it away.</p></div>
+  <div><dl>
+    <dt>Rule</dt><dd>At 9:30:00 the fee starts at 60 bps and halves every 30 seconds until it reaches 12 bps.</dd>
+    <dt>Why</dt><dd>The median NVDA move in the first six minutes after the open was 29 bps, and arbitrageurs race to close that gap in the pool. A falling fee makes each of them wait until it drops just under their edge, so the first one to trade pays close to the full gap.</dd>
+    <dt>Replay</dt><dd>Only a rough bound, because our reference price has one-minute resolution. The first 90 seconds after the open carry just 1.6% of the pool's volume, and in the first 30 seconds traders had no edge on average (−1.5 bps), so they were mostly ordinary flow that a 60 bps fee would push elsewhere. The losses at the open are spread across the first 20 minutes, which is what Design 1 already prices. Added to Design 1, the auction moves the replay by between −$1.3k and +$3.8k. We'd test it on a live pool before relying on it.</dd>
+  </dl></div>
+</div>
+<div class="design">
+  <div class="head"><span class="tag">Design 3 · oracle</span><h3>Directional fee</h3><p>Charge the trades that close a gap to the market, and only those.</p></div>
+  <div><dl>
+    <dt>Rule</dt><dd>A keeper writes a reference price into the hook: Chainlink's 24/5 NVDA price during the week and the perp mark at weekends. A swap that moves the pool toward the reference is closing a gap, which is what arbitrage does, and pays 0.75 times that gap. Every other swap pays the base fee. If the reference goes stale, the hook falls back to Design 1.</dd>
+    <dt>Evidence</dt><dd>Swaps that moved the pool toward the reference had a +6.0 bps edge before fees. Swaps that moved it away had −0.9 bps. Direction relative to the market separates the traders who cost LPs money from the ones who don't.</dd>
+    <dt>Replay</dt><dd>LP profit over August 21 to September 19 goes from $49.0k to $91.2k, up 86%, with a reference price about a minute old.</dd>
+    <dt>Cost</dt><dd>The price has to be fresh, and that has a cost. Chainlink's push feed for NVDA on Robinhood Chain only updates on a 0.5% move, often hours apart, which is too coarse for a fee measured in basis points. Its sub-second Data Streams reports are sold by subscription and have to be fetched by a keeper and written on chain. The gas is small, about $0.002 a write at today's prices, or $3 a day once a minute. Staleness is not: the hook nets +1.42 bps per dollar with a reference about a minute old, +0.78 at two minutes and nothing at five. If the keeper stops, the hook falls back to Design 1.</dd>
+  </dl></div>
+</div>
+<div class="design">
+  <div class="head"><span class="tag">Design 4 · no oracle</span><h3>Low-toxicity spread</h3><p>Make whoever reverses a move pay the spread it opened.</p></div>
+  <div><dl>
+    <dt>Rule</dt><dd>After a swap moves the price, the pool's quote on that side moves with it and the other side stays where it was, the way a market maker widens after a fill. A trade that reverses the move pays the base fee plus the distance back. The gap halves every few seconds, so the reversal gets cheaper until someone takes it: a Dutch auction the pool runs on its own. The open and close surcharges from Design 1 sit underneath. It adapts the <a href="https://ethresear.ch/t/low-toxicity-amm/13560">low-toxicity AMM</a> proposed on ethresear.ch to a dynamic fee, since a v4 hook can't reshape liquidity on every swap.</dd>
+    <dt>Why</dt><dd>No oracle, no keeper, no subscription, nothing to go stale. Sandwich back legs and fast round trips pay the spread they open, so that flow pays LPs.</dd>
+    <dt>Replay</dt><dd>Close to Design 1 on these trades, and below Design 3. With the Opening Bell underneath, the best setting we tried (a 4 bp base, half the gap, a 5-second half-life) netted +0.55 bps per dollar against +0.51 for the Opening Bell alone. A replay can't show how traders adapt to a spread, which is where this design would gain, so it's the one we most want to test live.</dd>
+  </dl></div>
+</div>
+</div><figure class="card" id="fig9"><header><div class="titles"><span class="fignum">Figure 9</span><h3>The Opening Bell fee through a trading day</h3><p class="sub">Designs 1 and 2 on a NYSE trading day: a 60 bps opening auction that halves every 30 seconds to a 12 bps open surcharge, 10 bps into the close, 5 bps otherwise.<span class="ia"> Hover to read the fee at any second.</span></p></div><div class="ctl controls"></div></header><div class="plot"></div><div class="under"></div></figure><figure class="card" id="fig10"><header><div class="titles"><span class="fignum">Figure 10</span><h3>Replaying August 21 to September 19 under each design</h3><p class="sub">Total LP profit in the NVDA pool over minutes with a live reference price.<span class="ia"> Change the assumptions to see how much each result depends on them.</span></p></div><div class="ctl controls"></div></header><div class="plot"></div><div class="under"></div></figure>
+
+<div class="col">
+<p>For our vault, the question is what a dollar of liquidity would earn. To compare fee designs fairly, we ran them on the same trades: every swap in the v3 pool from August 21 to September 19 with the memecoin bots taken out, marked against the Lighter perp. A static 5 bp fee, the v3 pool's design, netted LPs +0.27 bps per dollar traded. The directional hook at a 2 bp base fee netted +1.42, about five times as much, and at a 1 bp base it still netted +0.87. A static 1 bp fee, the design of the 0.01% pool, lost 2.73 bps per dollar on the same trades.</p>
+<p>At the v3 pool's October volume of 15.7x a day per dollar of liquidity, those margins come to about +8% a year for the static fee, +25% for the hook at a 1 bp base and +41% at 2 bps, on a $10k position before hedging costs. The hook's margin comes from charging arbitrage rather than from staying small, so it holds up as more LPs join. These are passive numbers, for an LP that sits in the pool all day. Our vault runs an active strategy on top, and that changes the picture in a useful way.</p>
+</div>
+<figure class="card chrome" id="fig11"><header><div class="titles"><span class="fignum">Figure 11</span><h3>What a passive LP earns under each fee design</h3><p class="sub">Projected APR for a passive LP that stays in the pool all day, against how busy the pool is, for three fee designs run on the same trades. Moving right means more trading per dollar of liquidity, not a bigger position.<span class="ia"> Hover to read any level; click a legend entry to hide a design.</span><span class="so"> The tiles read each design at the v3 pool's October rate of 15.7x.</span></p></div><div class="ctl controls"></div></header><div class="plot"></div><div class="under"></div></figure>
+<div class="col">
+<h2>What changes for an active LP</h2>
+<p>Our vault doesn't sit in the pool all day. It hedges its NVDA with a short perp and steps out of the pool when the market moves fast, because that is when arbitrage takes the most. To see how that works with each fee design, we replayed a simple version on the same trades: out of the pool in any minute where the perp's volatility over the previous 15 minutes was in the top 10%. That works out to about 31% of the volume, and it decides from past prices only.</p>
+<p>On the static pool, stepping out nearly triples the margin, from +0.27 to +0.72 bps per dollar, about +8% to +21% a year at the v3 pool's October volume. With the Opening Bell it reaches +1.03 bps, about +29%. On the directional hook it backfires, from +1.42 down to +0.88, because the hook charges arbitrage the most in exactly the fast minutes the strategy skips. Those become the best-paid minutes in the pool. On a hook pool our strategy would keep its hedge and stay in through the moves. The directional hook with the Opening Bell, held through every minute, came out highest of everything we tested at +2.00 bps, about +57% a year. These are model results on August and September trades before hedging costs; the vault's actual returns are in Figure 7.</p>
+</div>
+<figure class="card" id="fig12"><header><div class="titles"><span class="fignum">Figure 12</span><h3>Passive and active LPs under each fee design</h3><p class="sub">Projected APR at the v3 pool's October volume of 15.7x a day per $1 of liquidity, on the same trades as Figure 11, before hedging costs. Active means stepping out of the pool in the most volatile minutes, judged from the previous 15 minutes.<span class="ia"> Change how much of the time the active LP sits out.</span></p></div><div class="ctl controls"></div></header><div class="plot"></div><div class="under"></div></figure>
+<div class="col">
+<h2>A spread without an oracle</h2>
+<p>Design 3 depends on a price feed that someone has to pay for and keep alive. Design 4 needs nothing, which is why we built it. On these trades it doesn't match Design 3 yet, and Figure 13 shows why. The spread does charge arbitrage more than everyone else, about 5 bps against 3 at a 2 bp base, but the directional fee charges arbitrage 11 bps. The trades that cost LPs most follow a move in the outside market, and a spread built from the pool's own history can't see that move until someone trades on it. At a 2 bp base without the Opening Bell, the spread lost money once ordinary traders who hit a wide spread went to a cheaper pool.</p>
+</div>
+<figure class="card" id="fig13"><header><div class="titles"><span class="fignum">Figure 13</span><h3>What each design charges arbitrage and everyone else</h3><p class="sub">Average fee paid on the same trades. Arbitrage here means a swap that closed a gap of more than 3 bps to the perp price.</p></div><div class="ctl controls"></div></header><div class="plot"></div><div class="under"></div></figure>
+<div class="col">
+<p>The obvious alternative is to follow the flow to the 0.01% pool. A static 1 bp pool only works while it stays small, because arbitrage trades against the deepest pool. Give it the v3 pool's trader mix, which it would inherit as it grew, and its LPs would have lost about $89k over August 21 to September 19 where ours made $49k. The same flow through the directional hook at a 2 bp base fee made $52k, while quoting ordinary traders less than half our current fee.</p>
+<p>A hook only helps if aggregators route to it. Uniswap reviews dynamic-fee hooks before its router sends them flow, and checks for verified source, no upgradeable proxy, no custom hook data and no bypassing of the protocol fee. Our hooks are immutable, read the reference price from storage instead of swap data, and leave the protocol fee alone. The reference implementations and their 32 tests are on <a href="https://github.com/slvr-fun/stock-fee-hooks">GitHub</a>:</p>
+<ul>
+  <li><a href="https://github.com/slvr-fun/stock-fee-hooks/blob/main/src/OpeningBellFeeHook.sol">OpeningBellFeeHook.sol</a> (Designs 1 and 2), about 11k extra gas per swap</li>
+  <li><a href="https://github.com/slvr-fun/stock-fee-hooks/blob/main/src/OracleDirectionalFeeHook.sol">OracleDirectionalFeeHook.sol</a> (Design 3), about 18k extra gas per swap</li>
+  <li><a href="https://github.com/slvr-fun/stock-fee-hooks/blob/main/src/LowToxicitySpreadHook.sol">LowToxicitySpreadHook.sol</a> (Design 4), about 24k extra gas per swap</li>
+  <li><a href="https://github.com/slvr-fun/stock-fee-hooks/blob/main/src/MarketClock.sol">MarketClock.sol</a>, <a href="https://github.com/slvr-fun/stock-fee-hooks/blob/main/src/SessionFeeSchedule.sol">SessionFeeSchedule.sol</a>, <a href="https://github.com/slvr-fun/stock-fee-hooks/blob/main/src/NyseCalendar.sol">NyseCalendar.sol</a> and the <a href="https://github.com/slvr-fun/stock-fee-hooks/tree/main/test">tests</a></li>
+</ul>
+<p>They are not audited yet.</p>
+<p>Here's the plan. Next week we plan to deploy liquidity into some or all of these hooks on NVDA/USDG, pending Uniswap's routing review, and run them in the wild against the existing NVDA pools. We're starting with NVDA because it's the most traded stock token on Robinhood Chain and the one we have the best data for; other stocks come later. We'll keep our current position until the new pools carry real volume, and publish their live numbers as they trade, the same way we published these.</p>
+
+<p class="method">Method: pool-wide and time-of-day figures use every swap from August 21 to September 19, marked against the Lighter NVDA perp five minutes later. October projections use every swap from October 1 to 8. Flow classes come from swaps sampled in hourly windows from July 21 to October 7, weighted to a normal day's mix of trading hours. October figures mark against the v3 pool's own price, scaled to match the Lighter measurement on identical August trades. Data runs to October 9. Active-LP and Design 4 replays use the bot-free August and September trades; the Design 4 and staleness results assume an ordinary trader charged more than 5 bps goes to a cheaper pool. APR figures rank designs and are not forecasts.</p>
+</div>
+
+</main>
+<footer><span>SLVR Vaults · Data through October 9, 2026</span><span><a href="https://slvr.fun">slvr.fun</a> · <a href="https://github.com/slvr-fun/stock-fee-hooks">slvr-fun/stock-fee-hooks</a></span></footer>
+<script type="application/json" id="chart-data">{"daily":{"dates":["2026-07-21","2026-07-22","2026-07-23","2026-07-24","2026-07-25","2026-07-26","2026-07-27","2026-07-28","2026-07-29","2026-07-30","2026-07-31","2026-08-01","2026-08-02","2026-08-03","2026-08-04","2026-08-05","2026-08-06","2026-08-07","2026-08-08","2026-08-09","2026-08-10","2026-08-11","2026-08-12","2026-08-13","2026-08-14","2026-08-15","2026-08-16","2026-08-17","2026-08-18","2026-08-19","2026-08-20","2026-08-21","2026-08-22","2026-08-23","2026-08-24","2026-08-25","2026-08-26","2026-08-27","2026-08-28","2026-08-29","2026-08-30","2026-08-31","2026-09-01","2026-09-02","2026-09-03","2026-09-04","2026-09-05","2026-09-06","2026-09-07","2026-09-08","2026-09-09","2026-09-10","2026-09-11","2026-09-12","2026-09-13","2026-09-14","2026-09-15","2026-09-16","2026-09-17","2026-09-18","2026-09-19","2026-09-20","2026-09-21","2026-09-22","2026-09-23","2026-09-24","2026-09-25","2026-09-26","2026-09-27","2026-09-28","2026-09-29","2026-09-30","2026-10-01","2026-10-02","2026-10-03","2026-10-04","2026-10-05","2026-10-06","2026-10-07","2026-10-08","2026-10-09"],"series":[{"name":"Our vault pool, Uniswap v3 0.05%","values":[0.651,6.962,11.55,15.518,6.115,3.913,10.814,9.164,8.087,5.3,6.045,1.565,1.306,3.468,3.321,2.949,2.649,1.402,0.557,0.796,1.847,1.626,2.344,1.621,1.526,2.024,2.877,6.509,19.61,18.631,10.143,13.723,3.891,9.818,19.061,22.333,49.878,54.012,36.7,16.142,14.065,33.805,40.225,34.584,61.986,34.811,20.198,15.041,22.283,38.126,28.687,40.309,29.968,15.247,12.353,25.315,21.423,19.914,18.952,25.064,24.118,8.176,22.774,16.717,14.289,19.058,17.536,5.192,5.648,26.215,23.214,19.876,15.605,11.341,2.916,2.472,6.244,5.374,5.676,5.107,3.34]},{"name":"Uniswap v4 0.01%","values":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.758,1.578,1.115,1.869,0.73,0.108,0.07,0.036,0.022,0.189,0.015,0.011,0.011,0.006,0.024,8.604,5.032,2.149,2.315,1.535,0.809,7.242,28.994,14.125,14.835,59.313,6.995,3.503]},{"name":"Ramses v3","values":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.163,0.127,0.026,0.014,0.123,0.114,0.224,0.073,0.013,0.005,0.001,0.006,0.132,0.186,0.166,0.165,0.038,0.13,0.076,0.009,0.016,0.022,0.007,0.001,0.001,0.001,0.001,0.005,0.153,0.399,1.571,2.121,2.738,2.443,1.315,1.816,0.852,0.933,0.197,0.699,0.581,1.387,0.863,0.81,0.638,0.389,1.479,1.006,0.567,0.869,0.808,0.562,0.272,2.457,4.289,3.276,6.835,8.077,13.512,26.994,10.287,7.368,23.062,2.454,2.139]}],"partialLast":true},"weekly":{"nvda_vault":{"weeks":["2026-07-20","2026-07-27","2026-08-03","2026-08-10","2026-08-17","2026-08-24","2026-08-31","2026-09-07","2026-09-14","2026-09-21","2026-09-28","2026-10-05"],"meme":[155304,41939,13159,9787,8230,138773,567341,489781,146489,52532,54163,15288],"other":[127183,56221,22868,33045,273433,585393,512360,315680,246123,289123,330750,142598],"arb":[27996,153516,54098,39698,208361,538872,352745,307472,458358,260807,220077,75460]},"spy_vault":{"weeks":["2026-07-20","2026-07-27","2026-08-03","2026-08-10","2026-08-17","2026-08-24","2026-08-31","2026-09-07","2026-09-14","2026-09-21","2026-09-28","2026-10-05"],"meme":[12311,2169,3246,3915,4045,81996,169004,125556,70920,21188,11596,2236],"other":[2258,1229,152,174,948,4981,17972,7760,5158,4877,2243,8752],"arb":[1582,2104,389,174,69,2780,6681,7571,4298,19508,7204,7702]},"meta_vault":{"weeks":["2026-07-20","2026-07-27","2026-08-03","2026-08-10","2026-08-17","2026-08-24","2026-08-31","2026-09-07","2026-09-14","2026-09-21","2026-09-28","2026-10-05"],"meme":[1350,4,12,3,3,1119,24665,18019,169313,116752,16641,3496],"other":[2340,376,249,300,1161,3643,10722,33214,46688,89200,12075,12378],"arb":[841,853,961,339,486,1631,1259,10513,28442,65716,65029,29122]}},"curve":{"weeks":["2026-07-20","2026-07-27","2026-08-03","2026-08-10","2026-08-17","2026-08-24","2026-08-31","2026-09-07","2026-09-14","2026-09-21","2026-09-28","2026-10-05"],"perHour":[0,445,556,3589,2475,15359,52573,57195,29818,19592,14277,6250]},"pairs":{"weeks":["2026-07-13","2026-07-20","2026-07-27","2026-08-03","2026-08-10","2026-08-17","2026-08-24","2026-08-31","2026-09-07","2026-09-14","2026-09-21","2026-09-28","2026-10-05"],"count":[97,2074,1040,389,266,352,3835,3086,3058,845,1176,1318,407]},"traders":[{"label":"Memecoin-routed","bps":3.85,"share":24},{"label":"Aggregators and others","bps":4.16,"share":39},{"label":"Arbitrage bots","bps":-4.02,"share":37},{"label":"All flow","bps":1.12,"share":100,"note":"Full unsampled dataset: +1.06"},{"label":"All flow without memecoin routing","bps":0.27,"share":63}],"venues":{"memeEra":{"label":"Passive LP, Aug 21 to Sep 19 (memecoin era)","net":1.12,"vol":26700000.0,"depth":691000.0},"ours":{"label":"Passive LP, Oct 1 to 8","net":-0.583,"vol":6846079,"depth":437226},"v4":{"label":"Uniswap v4 0.01%, Oct 1 to 8","net":0.495,"vol":16732873,"depth":173045},"ram1":{"label":"Ramses v3, fee 1 bp, Oct 1 to 8","net":0.264,"vol":12325758,"depth":194312},"ram15":{"label":"Ramses v3, fee 1.5 bps, Oct 1 to 8","net":-0.092,"vol":12325758,"depth":194312},"botFree":{"label":"Passive LP, same month without memecoin routing","net":0.27,"vol":20292000,"depth":691000}},"hook":{"lo":0.568,"hi":1.422},"tod30":[{"t":0,"vol":7561244,"bps":2.94},{"t":30,"vol":5867290,"bps":3.032},{"t":60,"vol":5337271,"bps":2.379},{"t":90,"vol":4704578,"bps":2.095},{"t":120,"vol":5242157,"bps":2.18},{"t":150,"vol":4262082,"bps":2.027},{"t":180,"vol":4304203,"bps":-0.103},{"t":210,"vol":4355140,"bps":2.758},{"t":240,"vol":9177401,"bps":1.502},{"t":270,"vol":6645388,"bps":2.596},{"t":300,"vol":6344147,"bps":-0.991},{"t":330,"vol":4657298,"bps":-0.353},{"t":360,"vol":5118333,"bps":0.875},{"t":390,"vol":4123519,"bps":2.604},{"t":420,"vol":6409323,"bps":0.434},{"t":450,"vol":4380320,"bps":-0.177},{"t":480,"vol":11896134,"bps":0.31},{"t":510,"vol":13751906,"bps":2.097},{"t":540,"vol":15604312,"bps":1.768},{"t":570,"vol":41709504,"bps":-2.273},{"t":600,"vol":24244903,"bps":0.03},{"t":630,"vol":16719631,"bps":0.242},{"t":660,"vol":15980195,"bps":-0.412},{"t":690,"vol":16686541,"bps":0.994},{"t":720,"vol":11907478,"bps":1.866},{"t":750,"vol":9955280,"bps":1.35},{"t":780,"vol":8209502,"bps":0.164},{"t":810,"vol":8388284,"bps":0.064},{"t":840,"vol":8500595,"bps":0.609},{"t":870,"vol":9919910,"bps":-0.447},{"t":900,"vol":8649421,"bps":0.172},{"t":930,"vol":12967123,"bps":-1.375},{"t":960,"vol":5745713,"bps":1.837},{"t":990,"vol":5787685,"bps":1.596},{"t":1020,"vol":5990096,"bps":1.524},{"t":1050,"vol":5909486,"bps":2.719},{"t":1080,"vol":6285202,"bps":2.572},{"t":1110,"vol":4627638,"bps":2.439},{"t":1140,"vol":3695081,"bps":2.937},{"t":1170,"vol":4117654,"bps":1.902},{"t":1200,"vol":7024762,"bps":1.23},{"t":1230,"vol":4564830,"bps":2.913},{"t":1260,"vol":5495390,"bps":3.105},{"t":1290,"vol":4874491,"bps":2.047},{"t":1320,"vol":4222152,"bps":2.569},{"t":1350,"vol":4289839,"bps":2.449},{"t":1380,"vol":5498656,"bps":1.5},{"t":1410,"vol":4022973,"bps":2.49}],"tod5":[{"t":540,"vol":1914950,"bps":3.241},{"t":545,"vol":1773493,"bps":2.86},{"t":550,"vol":2492556,"bps":3.139},{"t":555,"vol":1496943,"bps":-0.254},{"t":560,"vol":2044769,"bps":3.6},{"t":565,"vol":5881601,"bps":0.254},{"t":570,"vol":14956128,"bps":-1.935},{"t":575,"vol":6894501,"bps":-2.902},{"t":580,"vol":5622063,"bps":-2.808},{"t":585,"vol":4964741,"bps":-4.746},{"t":590,"vol":4293486,"bps":-1.559},{"t":595,"vol":4978584,"bps":0.038},{"t":600,"vol":5174770,"bps":0.762},{"t":605,"vol":4292746,"bps":-1.146},{"t":610,"vol":5180301,"bps":0.403},{"t":615,"vol":3079307,"bps":0.6},{"t":620,"vol":3578090,"bps":1.117},{"t":625,"vol":2939690,"bps":-2.116},{"t":900,"vol":1208976,"bps":3.238},{"t":905,"vol":1511447,"bps":-3.483},{"t":910,"vol":1396037,"bps":0.971},{"t":915,"vol":1478376,"bps":0.171},{"t":920,"vol":1662695,"bps":0.727},{"t":925,"vol":1391889,"bps":0.012},{"t":930,"vol":1338622,"bps":-1.887},{"t":935,"vol":1141552,"bps":0.105},{"t":940,"vol":1659478,"bps":2.769},{"t":945,"vol":1418484,"bps":5.142},{"t":950,"vol":2880211,"bps":-4.467},{"t":955,"vol":4528777,"bps":-3.189},{"t":960,"vol":1410818,"bps":0.567},{"t":965,"vol":1008576,"bps":2.433},{"t":970,"vol":913177,"bps":2.667},{"t":975,"vol":890083,"bps":1.339},{"t":980,"vol":652641,"bps":3.039},{"t":985,"vol":870419,"bps":1.939}],"replay":{"today":49114,"bell":{"1.0":75874,"0.5":68014,"0.0":60155},"dirToday":49002,"dir":{"0.5":68174,"0.75":91184},"auction":{"lo":-1345,"hi":3820}},"designs":{"refT":15.66,"lines":[{"name":"Static 5 bps (the v3 pool's design)","net":0.271,"color":"silver"},{"name":"Directional hook, 2 bp base","net":1.422,"color":"green"},{"name":"Directional hook, 1 bp base","net":0.874,"color":"green","dash":true}]},"vault":[{"label":"Sep 22 to Oct 1","ret":0.376},{"label":"Oct 1 to 8","ret":-0.21},{"label":"Launch to Oct 8","ret":0.165}],"active":[{"label":"Our active strategy, Oct 1 to 8","ret":-0.21,"days":8.0},{"label":"Our active strategy, Sep 22 to Oct 8","ret":0.165,"days":16.2}],"activeLp":{"T":15.66,"timeOut":{"0.1":0.31,"0.2":0.479,"0.3":0.599},"designs":[{"name":"Static 5 bps (the v3 pool's design)","passive":0.271,"active10":0.723,"active20":0.574,"active30":0.655},{"name":"Opening Bell fee","passive":0.717,"active10":1.028,"active20":0.788,"active30":0.737},{"name":"Directional hook, 2 bp base","passive":1.422,"active10":0.879,"active20":0.675,"active30":0.551},{"name":"Directional hook with the Opening Bell","passive":1.999,"active10":1.266,"active20":0.947,"active30":0.66}]},"ltFees":[{"name":"Static 5 bps","arb":5.0,"rest":5.0},{"name":"Low-toxicity spread, 2 bp base","arb":5.0,"rest":2.95},{"name":"Directional hook, 2 bp base","arb":11.03,"rest":2.0}]}</script>
+<script>(function () {
+  "use strict";
+  var DATA = JSON.parse(document.getElementById("chart-data").textContent);
+  var NS = "http://www.w3.org/2000/svg";
+  var COL = { silver: "#c0c4cc", orange: "#d95926", blue: "#3987e5", green: "#199e70", pos: "#c0c4cc", neg: "#fd3748" };
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---------------------------------------------------------------- helpers
+  function S(tag, attrs, parent) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) if (attrs[k] !== undefined && attrs[k] !== null) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function H(tag, attrs, parent, text) {
+    var e = document.createElement(tag);
+    for (var k in attrs || {}) e.setAttribute(k, attrs[k]);
+    if (text !== undefined) e.textContent = text;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function T(parent, x, y, text, cls, anchor) {
+    var t = S("text", { x: x, y: y, "class": cls, "text-anchor": anchor || "start" }, parent);
+    t.textContent = text;
+    return t;
+  }
+  function minus(s) { return String(s).replace(/(^|[^\w])-(?=[$\d])/g, "$1−"); }
+  function sign(v, d) { var s = (v > 0 ? "+" : "") + v.toFixed(d === undefined ? 0 : d); return minus(s); }
+  function money(v) {
+    var a = Math.abs(v), s = a >= 1e6 ? "$" + (a / 1e6).toFixed(a >= 1e7 ? 0 : 1) + "M" : a >= 1e3 ? "$" + (a / 1e3).toFixed(a >= 1e5 ? 0 : 1) + "k" : "$" + a.toFixed(0);
+    return (v < 0 ? "−" : "") + s;
+  }
+  function niceTicks(lo, hi, n) {
+    if (hi === lo) hi = lo + 1;
+    var span = hi - lo, step = Math.pow(10, Math.floor(Math.log10(span / n))), ms = [1, 2, 2.5, 5, 10];
+    for (var i = 0; i < ms.length; i++) if (span / (step * ms[i]) <= n) { step *= ms[i]; break; }
+    var a = Math.floor(lo / step) * step, b = Math.ceil(hi / step) * step, out = [];
+    for (var v = a; v <= b + step * 1e-9; v += step) out.push(Math.round(v * 1e9) / 1e9);
+    return out;
+  }
+  function fmtDate(iso) { var d = new Date(iso + "T00:00:00Z"); return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }); }
+  function hhmm(m) { var h = Math.floor(m / 60), mm = m % 60; return (h < 10 ? "0" : "") + h + ":" + (mm < 10 ? "0" : "") + mm; }
+
+  // one tooltip for the page; rows = [[name, value, color]]
+  var tip = H("div", { "class": "tip", role: "status" }, document.body); tip.hidden = true;
+  function showTip(title, rows, x, y) {
+    tip.textContent = "";
+    H("div", { "class": "tt" }, tip, title);
+    rows.forEach(function (r) {
+      var row = H("div", { "class": "row" }, tip), n = H("span", { "class": "n" }, row);
+      var i = H("i", {}, n); i.style.background = r[2] || "transparent";
+      n.appendChild(document.createTextNode(r[0]));
+      H("b", {}, row, minus(r[1]));
+    });
+    tip.hidden = false;
+    var b = tip.getBoundingClientRect(), nx = x + 14, ny = y + 14;
+    if (nx + b.width > innerWidth - 8) nx = x - b.width - 14;
+    if (ny + b.height > innerHeight - 8) ny = y - b.height - 14;
+    tip.style.left = Math.max(8, nx) + "px"; tip.style.top = Math.max(8, ny) + "px";
+  }
+  function hideTip() { tip.hidden = true; }
+  addEventListener("scroll", hideTip, { passive: true });
+
+  // segmented control
+  function seg(container, label, options, initial, onChange) {
+    var wrap = H("div", { "class": "controls" }, container);
+    if (label) H("span", { "class": "seg-label" }, wrap, label);
+    var g = H("div", { "class": "seg", role: "group", "aria-label": label || "View" }, wrap);
+    var btns = options.map(function (o) {
+      var b = H("button", { type: "button", "aria-pressed": String(o[0] === initial) }, g, o[1]);
+      b.addEventListener("click", function () {
+        btns.forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+        onChange(o[0]);
+      });
+      return b;
+    });
+    return wrap;
+  }
+  // toggle legend
+  function legend(container, items, hidden, onChange, kind) {
+    var lg = container.querySelector(".legend") || H("div", { "class": "legend" }, container);
+    lg.textContent = "";
+    items.forEach(function (it) {
+      var b = H("button", { type: "button", "aria-pressed": String(!hidden[it.name]), title: "Show or hide " + it.name }, lg);
+      var sw = H("span", { "class": "sw " + (it.dash ? "dash" : kind || "") }, b);
+      if (it.dash) sw.style.borderTopColor = it.color; else sw.style.background = it.color;
+      b.appendChild(document.createTextNode(it.name));
+      b.addEventListener("click", function () {
+        var visible = items.filter(function (x) { return !hidden[x.name]; }).length;
+        if (!hidden[it.name] && visible === 1) return; // keep at least one
+        hidden[it.name] = !hidden[it.name];
+        b.setAttribute("aria-pressed", String(!hidden[it.name]));
+        onChange();
+      });
+    });
+  }
+  function table(container, headers, rows, caption) {
+    var old = container.querySelector("details.data"); if (old) old.remove();
+    var d = H("details", { "class": "data" }, container); H("summary", {}, d, caption || "Show the numbers");
+    var sc = H("div", { "class": "tscroll" }, d), t = H("table", {}, sc), tr = H("tr", {}, H("thead", {}, t));
+    headers.forEach(function (h) { H("th", {}, tr, h); });
+    var tb = H("tbody", {}, t);
+    rows.forEach(function (r) { var row = H("tr", {}, tb); r.forEach(function (c) { H("td", {}, row, minus(c)); }); });
+  }
+  // responsive mount: rerender on width change
+  function mount(plot, render) {
+    var last = 0;
+    function go() { var w = Math.max(300, Math.round(plot.clientWidth)); if (w !== last) { last = w; plot.textContent = ""; render(w); } }
+    plot.__render = function () { last = 0; go(); };
+    if ("ResizeObserver" in window) new ResizeObserver(go).observe(plot); else addEventListener("resize", go);
+    go();
+  }
+  function svgBox(plot, w, h) { return S("svg", { viewBox: "0 0 " + w + " " + h, width: w, height: h, role: "img" }, plot); }
+  function yAxis(svg, ticks, y, x0, x1, fmt) {
+    ticks.forEach(function (t) {
+      var yy = y(t);
+      S("line", { x1: x0, x2: x1, y1: yy, y2: yy, "class": t === 0 ? "g-axis" : "g-grid" }, svg);
+      T(svg, x0 - 8, yy + 4, minus(fmt(t)), "g-tick", "end");
+    });
+  }
+  function roundedBar(x, y, w, h, r, up) {
+    if (h <= 0.5) return "";
+    r = Math.min(r, h / 2, w / 2);
+    if (up) return "M" + x + "," + (y + h) + "V" + (y + r) + "Q" + x + "," + y + " " + (x + r) + "," + y + "H" + (x + w - r) + "Q" + (x + w) + "," + y + " " + (x + w) + "," + (y + r) + "V" + (y + h) + "Z";
+    return "M" + x + "," + y + "V" + (y + h - r) + "Q" + x + "," + (y + h) + " " + (x + r) + "," + (y + h) + "H" + (x + w - r) + "Q" + (x + w) + "," + (y + h) + " " + (x + w) + "," + (y + h - r) + "V" + y + "Z";
+  }
+  function grow(el, i) {
+    if (reduce) return;
+    el.style.transformBox = "fill-box"; el.style.transformOrigin = "bottom"; el.style.transform = "scaleY(0)";
+    el.style.transition = "transform .7s cubic-bezier(0.22,1,0.36,1) " + (i * 25) + "ms";
+    requestAnimationFrame(function () { requestAnimationFrame(function () { el.style.transform = "scaleY(1)"; }); });
+  }
+
+  // ---------------------------------------------------------------- line chart with crosshair
+  function lineChart(fig, cfg) {
+    var plot = fig.querySelector(".plot"), hidden = {}, range = cfg.ranges ? cfg.ranges[0][0] : null;
+    if (cfg.ranges) seg(fig.querySelector(".ctl"), "Range", cfg.ranges.map(function (r) { return [r[0], r[1]]; }), range, function (v) { range = v; plot.__render(); });
+    function render(w) {
+      var n0 = range ? Math.max(0, cfg.x.length - range) : 0;
+      var xs = cfg.x.slice(n0), ser = cfg.series.filter(function (s) { return !hidden[s.name]; });
+      var h = cfg.height || 320, m = { l: 56, r: 14, t: 10, b: 34 };
+      var svg = svgBox(plot, w, h), x0 = m.l, x1 = w - m.r, y0 = m.t, y1 = h - m.b;
+      var mx = 0; ser.forEach(function (s) { s.values.slice(n0).forEach(function (v) { if (v > mx) mx = v; }); });
+      var ticks = niceTicks(0, mx * 1.05, 5), hi = ticks[ticks.length - 1];
+      var X = function (i) { return x0 + (x1 - x0) * i / Math.max(1, xs.length - 1); }, Y = function (v) { return y1 - (y1 - y0) * v / hi; };
+      yAxis(svg, ticks, Y, x0, x1, cfg.yFmt);
+      var every = Math.ceil(xs.length / Math.max(3, Math.floor((x1 - x0) / 90)));
+      xs.forEach(function (d, i) { if (i % every === 0) T(svg, X(i), y1 + 20, fmtDate(d), "g-tick", "middle"); });
+      ser.forEach(function (s) {
+        var vals = s.values.slice(n0), d = "";
+        vals.forEach(function (v, i) { d += (i ? "L" : "M") + X(i).toFixed(1) + "," + Y(v).toFixed(1); });
+        var area = d + "L" + X(vals.length - 1) + "," + y1 + "L" + X(0) + "," + y1 + "Z";
+        var gid = "g" + Math.random().toString(36).slice(2);
+        var grad = S("linearGradient", { id: gid, x1: 0, x2: 0, y1: 0, y2: 1 }, S("defs", {}, svg));
+        S("stop", { offset: "0%", "stop-color": s.color, "stop-opacity": 0.16 }, grad); S("stop", { offset: "100%", "stop-color": s.color, "stop-opacity": 0 }, grad);
+        S("path", { d: area, fill: "url(#" + gid + ")" }, svg);
+        var p = S("path", { d: d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+        if (!reduce) { var L = p.getTotalLength(); p.style.strokeDasharray = L; p.style.strokeDashoffset = L; p.getBoundingClientRect(); p.style.transition = "stroke-dashoffset 1.1s cubic-bezier(0.22,1,0.36,1)"; p.style.strokeDashoffset = 0; }
+        S("circle", { cx: X(vals.length - 1), cy: Y(vals[vals.length - 1]), r: 4, fill: s.color, stroke: "#111112", "stroke-width": 2 }, svg);
+      });
+      var cross = S("line", { "class": "g-cross", y1: y0, y2: y1, x1: x0, x2: x0, visibility: "hidden" }, svg), dots = ser.map(function (s) { return S("circle", { r: 4.5, fill: s.color, stroke: "#111112", "stroke-width": 2, cx: x0, cy: y1, visibility: "hidden" }, svg); });
+      var hit = S("rect", { "class": "g-hit", x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, svg);
+      function at(ev) {
+        var r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * (w / r.width);
+        var i = Math.max(0, Math.min(xs.length - 1, Math.round((px - x0) / (x1 - x0) * (xs.length - 1))));
+        cross.setAttribute("x1", X(i)); cross.setAttribute("x2", X(i)); cross.setAttribute("visibility", "visible");
+        ser.forEach(function (s, k) { dots[k].setAttribute("cx", X(i)); dots[k].setAttribute("cy", Y(s.values[n0 + i])); dots[k].setAttribute("visibility", "visible"); });
+        var title = fmtDate(xs[i]) + (cfg.partialLast && n0 + i === cfg.x.length - 1 ? " (partial day)" : "");
+        showTip(title, ser.map(function (s) { return [s.name, cfg.yFmt(s.values[n0 + i], true), s.color]; }), ev.clientX, ev.clientY);
+      }
+      hit.addEventListener("pointermove", at); hit.addEventListener("pointerdown", at);
+      hit.addEventListener("pointerleave", function () { hideTip(); cross.setAttribute("visibility", "hidden"); dots.forEach(function (d) { d.setAttribute("visibility", "hidden"); }); });
+    }
+    legend(fig, cfg.series, hidden, function () { plot.__render(); }, "line");
+    mount(plot, render);
+    table(fig, ["Day"].concat(cfg.series.map(function (s) { return s.name; })), cfg.x.map(function (d, i) { return [fmtDate(d)].concat(cfg.series.map(function (s) { return cfg.yFmt(s.values[i], true); })); }), "Show the daily numbers");
+  }
+
+  // ---------------------------------------------------------------- stacked weekly bars
+  function stackedBars(fig, cfg) {
+    var INIT = (window.__INIT || {})[fig.id] || {};
+    var plot = fig.querySelector(".plot"), hidden = {}, mode = INIT.mode || "usd", src = INIT.src || cfg.source;
+    var ctl = fig.querySelector(".ctl");
+    if (cfg.sources) seg(ctl, null, cfg.sources.map(function (s) { return [s[0], s[1]]; }), src, function (v) { src = v; plot.__render(); writeTable(); });
+    if (cfg.series.length > 1) seg(ctl, null, [["usd", "$ per hour"], ["share", "Share"]], "usd", function (v) { mode = v; plot.__render(); });
+    function get() { return cfg.get(src); }
+    function render(w) {
+      var d = get(), ser = cfg.series.filter(function (s) { return !hidden[s.name]; });
+      var h = cfg.height || 300, m = { l: 58, r: 10, t: 12, b: 32 }, svg = svgBox(plot, w, h);
+      var x0 = m.l, x1 = w - m.r, y0 = m.t, y1 = h - m.b, n = d.cats.length;
+      var tot = d.cats.map(function (_, i) { return ser.reduce(function (a, s) { return a + d[s.key][i]; }, 0); });
+      var share = mode === "share" && ser.length > 1;
+      var ticks = share ? [0, 25, 50, 75, 100] : niceTicks(0, Math.max.apply(null, tot) * 1.08, 5), hi = ticks[ticks.length - 1];
+      var Y = function (v) { return y1 - (y1 - y0) * v / hi; };
+      yAxis(svg, ticks, Y, x0, x1, share ? function (t) { return t + "%"; } : cfg.fmt);
+      var band = (x1 - x0) / n, bw = Math.min(36, band * 0.62), every = band < 34 ? 2 : 1;
+      var g = S("g", {}, svg);
+      d.cats.forEach(function (c, i) {
+        var cx = x0 + band * (i + 0.5), acc = 0, col = S("g", { "class": "bar" }, g);
+        ser.forEach(function (s, k) {
+          var v = d[s.key][i]; if (share) v = tot[i] ? 100 * v / tot[i] : 0;
+          if (v <= 0) return;
+          var ya = Y(acc), yb = Y(acc + v), top = k === ser.length - 1 || ser.slice(k + 1).every(function (z) { return d[z.key][i] <= 0; });
+          var hh = Math.max(0, ya - yb - (acc > 0 ? 2 : 0));
+          var p = S("path", { d: roundedBar(cx - bw / 2, yb, bw, hh, top ? 5 : 0, true), fill: s.color }, col);
+          grow(p, i); acc += v;
+        });
+        if (i % every === 0) T(svg, cx, y1 + 20, c, "g-tick", "middle");
+        var hit = S("rect", { "class": "g-hit", x: cx - band / 2, y: y0, width: band, height: y1 - y0, tabindex: 0 }, svg);
+        function show(ev) {
+          g.classList.add("bars-dim"); col.classList.add("on");
+          var rows = ser.slice().reverse().map(function (s) { var v = d[s.key][i]; return [s.name, share ? (tot[i] ? (100 * v / tot[i]).toFixed(0) + "%" : "0%") : cfg.fmt(v, true), s.color]; });
+          if (ser.length > 1) rows.push(["Total", cfg.fmt(tot[i], true), "transparent"]);
+          var bb = hit.getBoundingClientRect();
+          showTip(cfg.title(c), rows, ev.clientX || bb.left + bb.width / 2, ev.clientY || bb.top);
+        }
+        function off() { g.classList.remove("bars-dim"); col.classList.remove("on"); hideTip(); }
+        hit.addEventListener("pointermove", show); hit.addEventListener("focus", show); hit.addEventListener("pointerleave", off); hit.addEventListener("blur", off);
+      });
+    }
+    if (cfg.series.length > 1) legend(fig, cfg.series, hidden, function () { plot.__render(); });
+    mount(plot, render);
+    function writeTable() {
+      var d = get();
+      table(fig, ["Week of"].concat(cfg.series.map(function (s) { return s.name; })), d.cats.map(function (c, i) { return [c].concat(cfg.series.map(function (s) { return cfg.fmt(d[s.key][i], true); })); }), "Show the weekly numbers");
+    }
+    writeTable();
+  }
+
+  // ---------------------------------------------------------------- horizontal diverging bars
+  function hbars(fig, cfg) {
+    var plot = fig.querySelector(".plot");
+    function render(w) {
+      var rows = cfg.rows(), narrow = w < 560, lw = narrow ? 0 : (cfg.labelW || 300), rh = narrow ? 52 : 38;
+      var h = 14 + rows.length * rh + 28, svg = svgBox(plot, w, h);
+      var vals = rows.map(function (r) { return r.value; }), lo = Math.min(0, Math.min.apply(null, vals)), hi = Math.max(0, Math.max.apply(null, vals));
+      var pad = (hi - lo) * 0.18 || 1, ticks = niceTicks(lo < 0 ? lo - pad * 0.3 : 0, hi + pad, 5), a = ticks[0], b = ticks[ticks.length - 1];
+      var x0 = lw + (narrow ? 4 : 0), x1 = w - 70, X = function (v) { return x0 + (x1 - x0) * (v - a) / (b - a); };
+      ticks.forEach(function (t) {
+        S("line", { x1: X(t), x2: X(t), y1: 6, y2: h - 26, "class": t === 0 ? "g-axis" : "g-grid" }, svg);
+        T(svg, X(t), h - 8, minus(cfg.fmt(t)), "g-tick", "middle");
+      });
+      rows.forEach(function (r, i) {
+        var yy = 10 + i * rh + (narrow ? 18 : 0), bh = 20, v = r.value, color = r.color || (v >= 0 ? COL.pos : COL.neg);
+        var xa = Math.min(X(0), X(v)), xb = Math.max(X(0), X(v)), wv = Math.max(1, xb - xa), rr = Math.min(5, wv / 2);
+        var d = v >= 0
+          ? "M" + xa + "," + yy + "H" + (xb - rr) + "Q" + xb + "," + yy + " " + xb + "," + (yy + rr) + "V" + (yy + bh - rr) + "Q" + xb + "," + (yy + bh) + " " + (xb - rr) + "," + (yy + bh) + "H" + xa + "Z"
+          : "M" + xb + "," + yy + "H" + (xa + rr) + "Q" + xa + "," + yy + " " + xa + "," + (yy + rr) + "V" + (yy + bh - rr) + "Q" + xa + "," + (yy + bh) + " " + (xa + rr) + "," + (yy + bh) + "H" + xb + "Z";
+        if (r.groupStart) S("line", { x1: 0, x2: w, y1: yy - (narrow ? 26 : 9), y2: yy - (narrow ? 26 : 9), stroke: "rgba(255,255,255,0.14)", "stroke-dasharray": "3 5" }, svg);
+        var p = S("path", { d: d, fill: color, "class": "bar" }, svg);
+        if (!reduce) { p.style.transformBox = "fill-box"; p.style.transformOrigin = v >= 0 ? "left" : "right"; p.style.transform = "scaleX(0)"; p.style.transition = "transform .7s cubic-bezier(0.22,1,0.36,1) " + (i * 40) + "ms"; requestAnimationFrame(function () { requestAnimationFrame(function () { p.style.transform = "scaleX(1)"; }); }); }
+        if (narrow) T(svg, 4, yy - 6, r.label, "g-lab", "start");
+        else T(svg, lw - 14, yy + 14, r.label, "g-lab", "end");
+        var txt = minus(cfg.val(v)), tx = v >= 0 ? xb + 8 : xa - 8, anc = v >= 0 ? "start" : "end";
+        if (v < 0 && tx - 7.5 * txt.length < x0) { tx = X(0) + 8; anc = "start"; }
+        T(svg, tx, yy + 14, txt, "g-val", anc);
+        var hit = S("rect", { "class": "g-hit", x: 0, y: yy - 8, width: w, height: rh, tabindex: 0 }, svg);
+        function show(ev) { var bb = hit.getBoundingClientRect(); showTip(r.label, [[cfg.metric || "Value", cfg.val(v), color]].concat(r.extra || []), ev.clientX || bb.left + 40, ev.clientY || bb.top); }
+        hit.addEventListener("pointermove", show); hit.addEventListener("focus", show); hit.addEventListener("pointerleave", hideTip); hit.addEventListener("blur", hideTip);
+      });
+    }
+    mount(plot, render);
+    function writeTable() { table(fig, cfg.headers || ["Row", "Value"], cfg.rows().map(function (r) { return [r.label, cfg.val(r.value)].concat(r.cols || []); })); }
+    writeTable();
+    return { update: function () { plot.__render(); writeTable(); } };
+  }
+
+  // ---------------------------------------------------------------- diverging columns (time of day)
+  function columns(fig, cfg) {
+    var plot = fig.querySelector(".plot"), view = cfg.views[0][0];
+    seg(fig.querySelector(".ctl"), "View", cfg.views.map(function (v) { return [v[0], v[1]]; }), view, function (v) { view = v; plot.__render(); writeTable(); });
+    function render(w) {
+      var d = cfg.get(view), h = 300, m = { l: 52, r: 10, t: 12, b: 32 }, svg = svgBox(plot, w, h);
+      var x0 = m.l, x1 = w - m.r, y0 = m.t, y1 = h - m.b, n = d.length;
+      var vals = d.map(function (r) { return r.bps; }), ticks = niceTicks(Math.min(0, Math.min.apply(null, vals)) * 1.1, Math.max(0, Math.max.apply(null, vals)) * 1.1, 6);
+      var a = ticks[0], b = ticks[ticks.length - 1], Y = function (v) { return y1 - (y1 - y0) * (v - a) / (b - a); };
+      yAxis(svg, ticks, Y, x0, x1, function (t) { return sign(t, 0) + " bps"; });
+      var band = (x1 - x0) / n, bw = Math.min(22, band * 0.7), every = Math.ceil(n / Math.max(4, Math.floor((x1 - x0) / 56)));
+      d.forEach(function (r, i) {
+        var cx = x0 + band * (i + 0.5), v = r.bps, up = v >= 0, ya = Y(Math.max(0, v)), yb = Y(Math.min(0, v));
+        var hot = cfg.isHot(r, view), color = up ? COL.pos : COL.neg;
+        var p = S("path", { d: roundedBar(cx - bw / 2, ya, bw, Math.max(0.5, yb - ya), 4, up), fill: color, opacity: hot || !cfg.dimCold ? 1 : 0.55, "class": "bar" }, svg);
+        if (hot) S("rect", { x: cx - bw / 2 - 3, y: y0, width: bw + 6, height: y1 - y0, fill: "rgba(255,255,255,0.035)", rx: 6 }, svg);
+        if (!reduce) { p.style.transformBox = "fill-box"; p.style.transformOrigin = up ? "bottom" : "top"; p.style.transform = "scaleY(0)"; p.style.transition = "transform .6s cubic-bezier(0.22,1,0.36,1) " + (i * 12) + "ms"; requestAnimationFrame(function () { requestAnimationFrame(function () { p.style.transform = "scaleY(1)"; }); }); }
+        if (i % every === 0) T(svg, cx, y1 + 20, hhmm(r.t), "g-tick", "middle");
+        var hit = S("rect", { "class": "g-hit", x: cx - band / 2, y: y0, width: band, height: y1 - y0, tabindex: 0 }, svg);
+        function show(ev) { var bb = hit.getBoundingClientRect(); showTip(hhmm(r.t) + " ET" + (view === "day" ? ", 30 min" : ", 5 min"), [["LP result", sign(v, 2) + " bps", color], ["Volume", money(r.vol), "transparent"]], ev.clientX || bb.left, ev.clientY || bb.top); }
+        hit.addEventListener("pointermove", show); hit.addEventListener("focus", show); hit.addEventListener("pointerleave", hideTip); hit.addEventListener("blur", hideTip);
+      });
+    }
+    mount(plot, render);
+    function writeTable() { table(fig, ["Time (ET)", "Volume", "LP result"], cfg.get(view).map(function (r) { return [hhmm(r.t), money(r.vol), sign(r.bps, 2) + " bps"]; })); }
+    writeTable();
+  }
+
+  // ---------------------------------------------------------------- fee designs on the same flow: APR against volume per $ of liquidity
+  function designChart(fig, cfg) {
+    var plot = fig.querySelector(".plot"), xmax = 40, xSel = cfg.refT, hidden = {};
+    var lines = cfg.lines.map(function (l) { return { name: l.name, net: l.net, color: COL[l.color], dash: !!l.dash }; });
+    function apr(net, T) { return 365 * T * net / 1e4 * 0.5 * 100; }   // small position, +/-1% range, before hedging costs
+    function fx(v) { return (v % 1 ? v.toFixed(1) : String(v)) + "x"; }
+    var drawCross = function () {}, out, slider, ro;
+    function render(w) {
+      var h = 360, m = { l: 58, r: 16, t: 14, b: 40 }, svg = svgBox(plot, w, h), x0 = m.l, x1 = w - m.r, y0 = m.t, y1 = h - m.b;
+      var ticks = [0, 25, 50, 75, 100], a = 0, b = 110;
+      var X = function (t) { return x0 + (x1 - x0) * t / xmax; }, Y = function (v) { return y1 - (y1 - y0) * (v - a) / (b - a); };
+      yAxis(svg, ticks, Y, x0, x1, function (t) { return t === 0 ? "0%" : sign(t) + "%"; });
+      [0, 10, 20, 30, 40].forEach(function (t) { T(svg, X(t), y1 + 18, t + "x", "g-tick", "middle"); });
+      T(svg, x1, y1 + 34, "pool volume each day per $1 of liquidity (a busier pool, not a bigger position)", "g-tick", "end");
+      var clip = "c" + Math.random().toString(36).slice(2); S("rect", { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, S("clipPath", { id: clip }, S("defs", {}, svg)));
+      var gl = S("g", { "clip-path": "url(#" + clip + ")" }, svg);
+      lines.forEach(function (l) {
+        if (hidden[l.name]) return;
+        var slope = apr(l.net, 1), xe = slope > 0 ? Math.min(xmax, b / slope) : slope < 0 ? Math.min(xmax, a / slope) : xmax;
+        S("line", { x1: X(0), y1: Y(0), x2: X(xe), y2: Y(slope * xe), stroke: l.color, "stroke-width": 2, "stroke-dasharray": l.dash ? "7 6" : null, "stroke-linecap": "round" }, gl);
+        var v = apr(l.net, cfg.refT); if (v >= a && v <= b) S("circle", { cx: X(cfg.refT), cy: Y(v), r: 5, fill: l.color, stroke: "#111112", "stroke-width": 2 }, svg);
+      });
+      S("text", { x: X(cfg.refT) + 6, y: y1 - 8, "class": "g-tick" }, svg).textContent = "v3 pool in October";
+      var cl = S("line", { y1: y0, y2: y1, stroke: "rgba(255,255,255,0.5)", "stroke-width": 1, "stroke-dasharray": "2 4" }, svg), ct = T(svg, 0, y0 + 12, "", "g-val", "start");
+      drawCross = function (v) { var cx = X(v); cl.setAttribute("x1", cx); cl.setAttribute("x2", cx); ct.setAttribute("x", cx + 6); ct.textContent = fx(v); };
+      drawCross(xSel);
+      var hit = S("rect", { "class": "g-hit", x: x0, y: y0, width: x1 - x0, height: y1 - y0, style: "cursor:crosshair" }, svg);
+      function at(ev) { var r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * (w / r.width); return Math.round(Math.max(1, Math.min(xmax, (px - x0) / (x1 - x0) * xmax)) * 10) / 10; }
+      hit.addEventListener("pointermove", function (ev) { var v = at(ev); drawCross(v); readout(v); });
+      hit.addEventListener("pointerleave", function () { drawCross(xSel); readout(xSel); });
+    }
+    function set(v) { xSel = v; slider.value = v; out.textContent = fx(v); drawCross(v); readout(v); }
+    legend(fig, lines.map(function (l) { return { name: l.name, color: l.color, dash: l.dash }; }), hidden, function () { plot.__render(); readout(xSel); }, "line");
+    var under = fig.querySelector(".under"), sl = H("div", { "class": "slider" }, under);
+    H("label", { "for": "apr-x" }, sl, "Pool volume per $1 of liquidity");
+    slider = H("input", { id: "apr-x", type: "range", min: 1, max: xmax, step: 0.1, value: xSel }, sl);
+    out = H("output", { "for": "apr-x" }, sl, fx(xSel));
+    slider.addEventListener("input", function () { set(+slider.value); });
+    ro = H("div", { "class": "readout" }, under);
+    function readout(xv) {
+      ro.textContent = "";
+      lines.forEach(function (l) {
+        var t = H("div", { "class": "t" }, ro), lab = H("div", { "class": "l" }, t), i = H("i", {}, lab); i.style.background = l.color;
+        lab.appendChild(document.createTextNode(l.name.replace(/ \(.*\)$/, "")));
+        H("div", { "class": "v" }, t, sign(apr(l.net, xv)) + "%");
+      });
+      var hd = H("div", { "class": "hint" }, ro); hd.style.gridColumn = "1 / -1";
+      hd.textContent = "A passive LP that stays in the pool all day, at " + fx(xv) + " pool volume per $1 of liquidity, on the same trades: the v3 pool's swaps from August 21 to September 19 with the memecoin bots removed, marked against the Lighter perp. A $10k position, before hedging costs. Our vault runs an active strategy on top of this, choosing when to be in the pool; the hook raises what every hour in the pool earns, so it lifts both.";
+    }
+    mount(plot, render); readout(xSel);
+  }
+
+  // ---------------------------------------------------------------- Opening Bell fee schedule
+  function feeSchedule(fig) {
+    var plot = fig.querySelector(".plot"), view = "day";
+    seg(fig.querySelector(".ctl"), "View", [["day", "Trading day"], ["open", "First 3 minutes"]], "day", function (v) { view = v; plot.__render(); });
+    function fee(s) { // s = seconds since midnight ET on a trading day
+      var open = 34200, close = 57600;
+      if (s >= open && s < open + 1800) return Math.max(12, 60 / Math.pow(2, Math.floor((s - open) / 30)));
+      if (s >= close - 1800 && s < close) return 10;
+      return 5;
+    }
+    function render(w) {
+      var lo = view === "day" ? 9 * 3600 : 34200 - 20, hi = view === "day" ? 16.5 * 3600 : 34200 + 180, step = view === "day" ? 10 : 1;
+      var h = 260, m = { l: 52, r: 12, t: 12, b: 32 }, svg = svgBox(plot, w, h), x0 = m.l, x1 = w - m.r, y0 = m.t, y1 = h - m.b;
+      var X = function (s) { return x0 + (x1 - x0) * (s - lo) / (hi - lo); }, Y = function (v) { return y1 - (y1 - y0) * v / 70; };
+      yAxis(svg, [0, 10, 20, 30, 40, 50, 60, 70], Y, x0, x1, function (t) { return t + " bps"; });
+      var d = "", prev = null;
+      for (var s = lo; s <= hi; s += step) { var f = fee(s); d += (d ? (prev !== f ? "L" + X(s).toFixed(1) + "," + Y(prev).toFixed(1) + "L" : "L") : "M") + X(s).toFixed(1) + "," + Y(f).toFixed(1); prev = f; }
+      var gid = "fs" + Math.random().toString(36).slice(2), grad = S("linearGradient", { id: gid, x1: 0, x2: 0, y1: 0, y2: 1 }, S("defs", {}, svg));
+      S("stop", { offset: "0%", "stop-color": COL.green, "stop-opacity": 0.22 }, grad); S("stop", { offset: "100%", "stop-color": COL.green, "stop-opacity": 0 }, grad);
+      S("path", { d: d + "L" + X(hi) + "," + y1 + "L" + X(lo) + "," + y1 + "Z", fill: "url(#" + gid + ")" }, svg);
+      S("path", { d: d, fill: "none", stroke: COL.green, "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+      S("line", { x1: X(lo), x2: X(hi), y1: Y(5), y2: Y(5), stroke: COL.silver, "stroke-width": 1, "stroke-dasharray": "4 5", opacity: 0.7 }, svg);
+      T(svg, X(hi) - 4, Y(5) - 6, "static 5 bps pool", "g-tick", "end");
+      var ticksX = view === "day" ? [9, 10, 11, 12, 13, 14, 15, 16].map(function (hh) { return hh * 3600; }) : [34200, 34230, 34260, 34290, 34320, 34350, 34380];
+      ticksX.forEach(function (s) { var hh = Math.floor(s / 3600), mm = Math.floor(s % 3600 / 60), ss = s % 60; T(svg, X(s), y1 + 20, view === "day" ? hh + ":00" : hh + ":" + (mm < 10 ? "0" : "") + mm + ":" + (ss < 10 ? "0" : "") + ss, "g-tick", "middle"); });
+      var cross = S("line", { "class": "g-cross", y1: y0, y2: y1, x1: x0, x2: x0, visibility: "hidden" }, svg), dot = S("circle", { r: 4.5, fill: COL.green, stroke: "#111112", "stroke-width": 2, cx: x0, cy: y1, visibility: "hidden" }, svg);
+      var hit = S("rect", { "class": "g-hit", x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, svg);
+      hit.addEventListener("pointermove", function (ev) {
+        var r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * (w / r.width), s = Math.round(lo + (px - x0) / (x1 - x0) * (hi - lo)), f = fee(s);
+        cross.setAttribute("x1", X(s)); cross.setAttribute("x2", X(s)); dot.setAttribute("cx", X(s)); dot.setAttribute("cy", Y(f)); cross.setAttribute("visibility", "visible"); dot.setAttribute("visibility", "visible");
+        var hh = Math.floor(s / 3600), mm = Math.floor(s % 3600 / 60), ss = s % 60;
+        showTip(hh + ":" + (mm < 10 ? "0" : "") + mm + ":" + (ss < 10 ? "0" : "") + ss + " ET", [["Hook fee", f.toFixed(f % 1 ? 2 : 0) + " bps", COL.green], ["Static pool", "5 bps", COL.silver]], ev.clientX, ev.clientY);
+      });
+      hit.addEventListener("pointerleave", function () { hideTip(); cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); });
+    }
+    mount(plot, render);
+  }
+
+  // ---------------------------------------------------------------- route diagram: step through the hops
+  function route(fig) {
+    var hops = [].slice.call(fig.querySelectorAll(".hop")), note = fig.querySelector(".route-note"), i = -1, timer;
+    function lite(k) { hops.forEach(function (h, j) { h.classList.toggle("lit", j === k); }); note.textContent = k >= 0 ? hops[k].getAttribute("data-note") : ""; }
+    hops.forEach(function (h, k) { h.tabIndex = 0; h.addEventListener("pointerenter", function () { clearInterval(timer); lite(k); }); h.addEventListener("focus", function () { clearInterval(timer); lite(k); }); });
+    if (!reduce) timer = setInterval(function () { i = (i + 1) % hops.length; lite(i); }, 1600);
+    lite(0);
+  }
+
+  // ---------------------------------------------------------------- wire up
+  var D = DATA, weekLabel = function (iso) { return fmtDate(iso); };
+  lineChart(document.getElementById("fig1"), {
+    x: D.daily.dates, partialLast: true, height: 320,
+    series: [{ name: "Our pool, v3 0.05%", color: COL.silver, values: D.daily.series[0].values }, { name: "Uniswap v4 0.01%", color: COL.orange, values: D.daily.series[1].values }, { name: "Ramses v3", color: COL.blue, values: D.daily.series[2].values }],
+    yFmt: function (v, full) { return full ? "$" + v.toFixed(v >= 10 ? 1 : 2) + "M" : "$" + v + "M"; },
+    ranges: [[0, "All"], [30, "Last 30 days"]]
+  });
+  route(document.getElementById("fig2"));
+  function weekly(pool) { var w = D.weekly[pool]; return { cats: w.weeks.map(weekLabel), meme: w.meme, other: w.other, arb: w.arb }; }
+  var CLS = [{ name: "Arbitrage bots", key: "arb", color: COL.blue }, { name: "Aggregators and others", key: "other", color: COL.silver }, { name: "Memecoin-routed", key: "meme", color: COL.orange }];
+  var usdHr = function (v) { return v >= 1000 ? "$" + Math.round(v / 1000).toLocaleString() + "k" : "$" + Math.round(v); };
+  stackedBars(document.getElementById("fig3"), { series: CLS, source: "nvda_vault", get: weekly, fmt: function (v) { return usdHr(v); }, title: function (c) { return "Week of " + c + " · per hour"; } });
+  stackedBars(document.getElementById("fig4"), { series: CLS, sources: [["spy_vault", "SPY pool"], ["meta_vault", "META pool"]], source: "spy_vault", get: weekly, fmt: function (v) { return usdHr(v); }, title: function (c) { return "Week of " + c + " · per hour"; }, height: 280 });
+  stackedBars(document.getElementById("fig5a"), { series: [{ name: "Curve trades per hour", key: "v", color: COL.orange }], get: function () { return { cats: D.curve.weeks.map(weekLabel), v: D.curve.perHour }; }, fmt: function (v) { return v >= 1000 ? Math.round(v / 1000) + "k" : String(Math.round(v)); }, title: function (c) { return "Week of " + c; }, height: 240 });
+  stackedBars(document.getElementById("fig5b"), { series: [{ name: "New NVDA pairs", key: "v", color: COL.orange }], get: function () { return { cats: D.pairs.weeks.map(weekLabel), v: D.pairs.count }; }, fmt: function (v) { return Math.round(v).toLocaleString(); }, title: function (c) { return "Week of " + c; }, height: 240 });
+  hbars(document.getElementById("fig6"), {
+    rows: function () { return D.traders.map(function (t) { return { label: t.label, value: t.bps, extra: [["Share of volume", t.share + "%", "transparent"]].concat(t.note ? [[t.note, "", "transparent"]] : []), cols: [t.share + "%"] }; }); },
+    fmt: function (v) { return sign(v); }, val: function (v) { return sign(v, 2) + " bps"; }, metric: "LP result per $", headers: ["Flow", "LP result per $", "Share of volume"], labelW: 280
+  });
+  var VEN = D.venues, sizeK = 10000;
+  function aprAt(v, K) { var d = 0.5 * K; return 365 * (d / (v.depth + d)) * v.vol * v.net / 1e4 / K * 100; }
+  var fig7 = document.getElementById("fig7");
+  var h7 = hbars(fig7, {
+    rows: function () {
+      var passive = ["memeEra", "botFree", "ours"].map(function (k) { var v = VEN[k]; return { label: v.label, value: aprAt(v, sizeK), extra: [["Net per $ traded", sign(v.net, 2) + " bps", "transparent"], ["Daily volume per $ of liquidity", (v.vol / v.depth).toFixed(0) + "x", "transparent"]], cols: [sign(v.net, 2) + " bps", (v.vol / v.depth).toFixed(0) + "x"] }; });
+      // the live vault's actual share-price return, annualized; position size doesn't apply to an actual result
+      var active = D.active.map(function (a, j) { var apr = a.ret * 365 / a.days; return { label: a.label, value: apr, color: apr >= 0 ? COL.green : COL.neg, extra: [["Actual return over the period", sign(a.ret, 2) + "%", "transparent"], ["Days", String(a.days), "transparent"], ["Source", "live vault share price, after all costs", "transparent"]], cols: ["actual", a.days + " days"], groupStart: j === 0 }; });
+      return passive.concat(active);
+    },
+    fmt: function (v) { return sign(v) + "%"; }, val: function (v) { return sign(v) + "%"; }, metric: "Projected APR", headers: ["Pool and period", "APR", "Net per $", "Volume per $ of liquidity"], labelW: 320
+  });
+  seg(fig7.querySelector(".ctl"), "Position", [[10000, "$10k"], [250000, "$250k"], [1000000, "$1M"]], 10000, function (k) { sizeK = k; h7.update(); });
+  // the live vault's actual results, kept apart from the passive model above
+  (function () {
+    var box = H("div", { "class": "vault-actual" }, fig7.querySelector(".under"));
+    H("div", { "class": "va-title" }, box, "Our live NVDA vault: actual share-price return after all costs");
+    var grid = H("div", { "class": "readout" }, box);
+    D.vault.forEach(function (r) { var t = H("div", { "class": "t" }, grid); H("div", { "class": "l" }, t, r.label); H("div", { "class": "v" }, t, sign(r.ret, 2) + "%"); });
+    H("div", { "class": "hint" }, box, "The vault is hedged, sits out the open, and leaves the pool when expected fees don't cover what arbitrage takes. These are returns over each period, not annualized.");
+  })();
+  columns(document.getElementById("fig8"), {
+    views: [["day", "Whole day"], ["open", "Around the open"], ["close", "Around the close"]],
+    get: function (v) { if (v === "day") return D.tod30; return D.tod5.filter(function (r) { return v === "open" ? r.t < 630 + 1 : r.t >= 900; }); },
+    isHot: function (r, v) { return v === "day" ? (r.t === 570 || r.t === 930) : (v === "open" ? r.t >= 570 && r.t < 600 : r.t >= 930 && r.t < 960); }
+  });
+  feeSchedule(document.getElementById("fig9"));
+  var R = D.replay, ret = "0.5", alpha = "0.75", fig10 = document.getElementById("fig10");
+  var h10 = hbars(fig10, {
+    rows: function () {
+      return [{ label: "Today: flat 5 bps", value: R.today / 1000, color: COL.silver },
+        { label: "Opening Bell fee, " + { "1.0": "all", "0.5": "half", "0.0": "no" }[ret] + " ordinary traders stay", value: R.bell[ret] / 1000, color: COL.green, extra: [["Change", sign(100 * (R.bell[ret] / R.today - 1)) + "%", "transparent"]] },
+        { label: "Opening Bell plus auction, upper bound", value: (R.bell[ret] + R.auction.hi) / 1000, color: COL.green, extra: [["Range", "$" + ((R.bell[ret] + R.auction.lo) / 1000).toFixed(1) + "k to $" + ((R.bell[ret] + R.auction.hi) / 1000).toFixed(1) + "k", "transparent"], ["Low end", "everyone trading in the first 90 s leaves", "transparent"], ["High end", "they wait for the 12 bps floor", "transparent"]] },
+        { label: "Directional fee, " + alpha + " \u00d7 the gap", value: R.dir[alpha] / 1000, color: COL.green, extra: [["Change", sign(100 * (R.dir[alpha] / R.dirToday - 1)) + "%", "transparent"]] }];
+    },
+    fmt: function (v) { return "$" + v.toFixed(0) + "k"; }, val: function (v) { return "$" + v.toFixed(1) + "k"; }, metric: "LP profit, Aug 21 to Sep 19", headers: ["Design", "LP profit"], labelW: 300
+  });
+  seg(fig10.querySelector(".ctl"), "Ordinary traders who stay at the open and close", [["1.0", "All"], ["0.5", "Half"], ["0.0", "None"]], "0.5", function (v) { ret = v; h10.update(); });
+  seg(fig10.querySelector(".ctl"), "Directional share of the gap", [["0.5", "0.5"], ["0.75", "0.75"]], "0.75", function (v) { alpha = v; h10.update(); });
+  designChart(document.getElementById("fig11"), D.designs);
+  // passive vs active LP under each design, APR at the v3 pool's October rate
+  var AL = D.activeLp, cut = "0.1", fig12 = document.getElementById("fig12");
+  var aprT = function (net) { return 365 * AL.T * net * 0.5 / 1e4 * 100; };
+  var h12 = hbars(fig12, {
+    rows: function () {
+      var out = [];
+      AL.designs.forEach(function (d, i) {
+        var act = d["active" + Math.round(+cut * 100)];
+        out.push({ label: d.name + ": passive", value: aprT(d.passive), color: COL.silver, groupStart: i > 0, extra: [["Net per $ traded", sign(d.passive, 2) + " bps", "transparent"]], cols: [sign(d.passive, 2) + " bps"] });
+        out.push({ label: d.name + ": active", value: aprT(act), color: COL.green, extra: [["Net per $ traded", sign(act, 2) + " bps", "transparent"], ["Out of the pool for", Math.round(100 * AL.timeOut[cut]) + "% of volume", "transparent"]], cols: [sign(act, 2) + " bps"] });
+      });
+      return out;
+    },
+    fmt: function (v) { return sign(v) + "%"; }, val: function (v) { return sign(v) + "%"; }, metric: "Projected APR", headers: ["Design and LP", "APR", "Net per $"], labelW: 360
+  });
+  seg(fig12.querySelector(".ctl"), "Active LP steps out in the most volatile", [["0.1", "10% of minutes"], ["0.2", "20%"], ["0.3", "30%"]], "0.1", function (v) { cut = v; h12.update(); });
+  // what each design charges arbitrage vs everyone else
+  hbars(document.getElementById("fig13"), {
+    rows: function () {
+      var out = [];
+      D.ltFees.forEach(function (d, i) {
+        out.push({ label: d.name + ": arbitrage", value: d.arb, color: COL.orange, groupStart: i > 0 });
+        out.push({ label: d.name + ": everyone else", value: d.rest, color: COL.blue });
+      });
+      return out;
+    },
+    fmt: function (v) { return v.toFixed(0) + " bps"; }, val: function (v) { return v.toFixed(1) + " bps"; }, metric: "Average fee paid", headers: ["Design and trader", "Average fee"], labelW: 360
+  });
+})();
+</script>
+</body>
+</html>
